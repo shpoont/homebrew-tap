@@ -133,7 +133,9 @@ jobs:
       - name: Build bottle
         run: |
           set -euo pipefail
-          brew uninstall --ignore-dependencies dotfiles-manager || true
+          if brew list --versions dotfiles-manager >/dev/null 2>&1; then
+            brew uninstall --ignore-dependencies dotfiles-manager
+          fi
           brew install --build-bottle shpoont/tap/dotfiles-manager
 
       - name: Create bottle archive + json
@@ -313,6 +315,10 @@ jobs:
         run: |
           set -euo pipefail
           brew audit --strict shpoont/tap/dotfiles-manager
+          if brew list --versions dotfiles-manager >/dev/null 2>&1; then
+            brew uninstall --ignore-dependencies dotfiles-manager
+          fi
+          brew install shpoont/tap/dotfiles-manager
           brew test shpoont/tap/dotfiles-manager
 
       - name: Commit and push formula update
