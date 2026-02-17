@@ -22,7 +22,7 @@ class DotfilesManager < Formula
           source: .config/nvim
     YAML
 
-    output = shell_output("#{bin}/dotfiles-manager --config #{testpath}/.dotfiles-manager.yaml status")
-    assert_match "summary deploy=0 import=0", output
+    output = shell_output("#{bin}/dotfiles-manager --config #{testpath}/.dotfiles-manager.yaml status --json")
+    assert_match "\"ok\":true", output
   end
 end

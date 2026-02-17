@@ -1,0 +1,329 @@
+name: dotfiles-manager bottles
+
+on:
+  repository_dispatch:
+    types:
+      - dotfiles-manager-release
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Upstream tag to bottle (e.g. v0.1.2)"
+        required: true
+      source_sha256:
+        description: "Optional SHA256 for upstream source tarball"
+        required: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: dotfiles-manager-bottles
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: prepare metadata
+    runs-on: ubuntu-22.04
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      version: ${{ steps.meta.outputs.version }}
+      source_sha256: ${{ steps.meta.outputs.source_sha256 }}
+      release_tag: ${{ steps.meta.outputs.release_tag }}
+    env:
+      EVENT_TAG: ${{ github.event.client_payload.tag }}
+      EVENT_VERSION: ${{ github.event.client_payload.version }}
+      EVENT_SHA256: ${{ github.event.client_payload.source_sha256 }}
+      INPUT_TAG: ${{ inputs.tag }}
+      INPUT_SHA256: ${{ inputs.source_sha256 }}
+    steps:
+      - name: Resolve inputs
+        id: meta
+        run: |
+          set -euo pipefail
+          tag="${EVENT_TAG:-${INPUT_TAG:-}}"
+          if [[ -z "${tag}" ]]; then
+            echo "::error::Missing release tag."
+            exit 1
+          fi
+          if [[ "${tag}" != v* ]]; then
+            echo "::error::Tag must start with v. Got: ${tag}"
+            exit 1
+          fi
+
+          version="${EVENT_VERSION:-${tag#v}}"
+          if [[ "${version}" != "${tag#v}" ]]; then
+            echo "::error::Version '${version}' does not match tag '${tag}'."
+            exit 1
+          fi
+
+          source_sha256="${EVENT_SHA256:-${INPUT_SHA256:-}}"
+          if [[ -z "${source_sha256}" ]]; then
+            curl -fsSL "https://github.com/shpoont/dotfiles-manager/archive/refs/tags/${tag}.tar.gz" -o source.tar.gz
+            source_sha256="$(sha256sum source.tar.gz | awk '{print $1}')"
+          fi
+
+          if [[ ! "${source_sha256}" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "::error::Invalid source sha256: ${source_sha256}"
+            exit 1
+          fi
+
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "source_sha256=${source_sha256}" >> "$GITHUB_OUTPUT"
+          echo "release_tag=dotfiles-manager-${version}" >> "$GITHUB_OUTPUT"
+
+  build-bottles:
+    name: build ${{ matrix.os }}
+    needs:
+      - prepare
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-22.04
+          - macos-15-intel
+          - macos-26
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      SOURCE_SHA256: ${{ needs.prepare.outputs.source_sha256 }}
+      RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+    steps:
+      - name: Checkout tap
+        uses: actions/checkout@v4
+
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@main
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update formula source fields
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          path = Path("Formula/dotfiles-manager.rb")
+          text = path.read_text()
+
+          version = os.environ["VERSION"]
+          source_sha = os.environ["SOURCE_SHA256"]
+
+          text = re.sub(
+              r'url "https://github\\.com/shpoont/dotfiles-manager/archive/refs/tags/v[^"]+\\.tar\\.gz"',
+              f'url "https://github.com/shpoont/dotfiles-manager/archive/refs/tags/v{version}.tar.gz"',
+              text,
+          )
+          text = re.sub(r'sha256 "[0-9a-f]{64}"', f'sha256 "{source_sha}"', text, count=1)
+          text = re.sub(r'\n  bottle do\n.*?\n  end\n', '\n', text, count=1, flags=re.S)
+          text = re.sub(
+              r'output = shell_output\("#\{bin\}/dotfiles-manager --config #\{testpath\}/\\.dotfiles-manager\\.yaml status(?: --json)?"\)',
+              'output = shell_output("#{bin}/dotfiles-manager --config #{testpath}/.dotfiles-manager.yaml status --json")',
+              text,
+          )
+          text = re.sub(r'assert_match .*?, output', 'assert_match "\\"ok\\":true", output', text, count=1)
+
+          path.write_text(text)
+          PY
+
+      - name: Build bottle
+        run: |
+          set -euo pipefail
+          brew untap shpoont/tap || true
+          brew tap shpoont/tap "${GITHUB_WORKSPACE}"
+          brew uninstall --ignore-dependencies dotfiles-manager || true
+          brew install --build-bottle shpoont/tap/dotfiles-manager
+
+      - name: Create bottle archive + json
+        run: |
+          set -euo pipefail
+          brew bottle --json --root-url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}" shpoont/tap/dotfiles-manager
+
+          python3 - <<'PY'
+          import glob
+          import json
+          import os
+
+          json_files = glob.glob("dotfiles-manager--*.bottle.json")
+          if len(json_files) != 1:
+              raise SystemExit(f"Expected exactly one bottle JSON file, got: {json_files}")
+
+          with open(json_files[0], "r", encoding="utf-8") as fh:
+              payload = json.load(fh)
+
+          key = next(iter(payload))
+          tags = payload[key]["bottle"]["tags"]
+          if len(tags) != 1:
+              raise SystemExit(f"Expected one bottle tag, got: {list(tags.keys())}")
+
+          info = next(iter(tags.values()))
+          local_filename = info.get("local_filename")
+          filename = info["filename"]
+
+          if local_filename and os.path.exists(local_filename) and local_filename != filename:
+              os.rename(local_filename, filename)
+
+          if not os.path.exists(filename):
+              raise SystemExit(f"Bottle archive not found: {filename}")
+          PY
+
+          mkdir -p bottle-artifacts
+          mv dotfiles-manager*.bottle*.tar.gz bottle-artifacts/
+          mv dotfiles-manager--*.bottle.json bottle-artifacts/
+
+      - name: Upload bottle artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: bottles-${{ matrix.os }}
+          path: bottle-artifacts/*
+          if-no-files-found: error
+
+  publish:
+    name: publish bottles + update formula
+    needs:
+      - prepare
+      - build-bottles
+    runs-on: ubuntu-22.04
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      SOURCE_SHA256: ${{ needs.prepare.outputs.source_sha256 }}
+      RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+    steps:
+      - name: Checkout tap
+        uses: actions/checkout@v4
+
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@main
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download bottle artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: bottle-artifacts
+          pattern: bottles-*
+          merge-multiple: true
+
+      - name: Validate downloaded artifacts
+        run: |
+          set -euo pipefail
+          ls -lah bottle-artifacts
+          json_count="$(find bottle-artifacts -type f -name '*.json' | wc -l | tr -d ' ')"
+          tgz_count="$(find bottle-artifacts -type f -name '*.tar.gz' | wc -l | tr -d ' ')"
+          if [[ "${json_count}" == "0" || "${tgz_count}" == "0" ]]; then
+            echo "::error::Expected JSON and bottle archives in bottle-artifacts."
+            exit 1
+          fi
+
+      - name: Update formula source fields
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          path = Path("Formula/dotfiles-manager.rb")
+          text = path.read_text()
+
+          version = os.environ["VERSION"]
+          source_sha = os.environ["SOURCE_SHA256"]
+
+          text = re.sub(
+              r'url "https://github\\.com/shpoont/dotfiles-manager/archive/refs/tags/v[^"]+\\.tar\\.gz"',
+              f'url "https://github.com/shpoont/dotfiles-manager/archive/refs/tags/v{version}.tar.gz"',
+              text,
+          )
+          text = re.sub(r'sha256 "[0-9a-f]{64}"', f'sha256 "{source_sha}"', text, count=1)
+          text = re.sub(r'\n  bottle do\n.*?\n  end\n', '\n', text, count=1, flags=re.S)
+          text = re.sub(
+              r'output = shell_output\("#\{bin\}/dotfiles-manager --config #\{testpath\}/\\.dotfiles-manager\\.yaml status(?: --json)?"\)',
+              'output = shell_output("#{bin}/dotfiles-manager --config #{testpath}/.dotfiles-manager.yaml status --json")',
+              text,
+          )
+          text = re.sub(r'assert_match .*?, output', 'assert_match "\\"ok\\":true", output', text, count=1)
+
+          path.write_text(text)
+          PY
+
+      - name: Merge bottle metadata into formula
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import glob
+          import json
+          from pathlib import Path
+
+          files = sorted(glob.glob("bottle-artifacts/*.json"))
+          if not files:
+              raise SystemExit("No bottle JSON files found")
+
+          merged = None
+          merged_key = None
+          for json_path in files:
+              with open(json_path, "r", encoding="utf-8") as fh:
+                  data = json.load(fh)
+
+              key = next(iter(data))
+              if merged is None:
+                  merged = data
+                  merged_key = key
+                  continue
+
+              if key != merged_key:
+                  raise SystemExit(f"Mismatched formula key: {key} != {merged_key}")
+
+              merged_tags = merged[merged_key]["bottle"]["tags"]
+              new_tags = data[key]["bottle"]["tags"]
+              merged_tags.update(new_tags)
+
+          merged_tags = merged[merged_key]["bottle"]["tags"]
+          merged[merged_key]["bottle"]["tags"] = {k: merged_tags[k] for k in sorted(merged_tags)}
+
+          out = Path("bottle-artifacts/merged.json")
+          out.write_text(json.dumps(merged, indent=2) + "\n", encoding="utf-8")
+          PY
+
+          brew untap shpoont/tap || true
+          brew tap shpoont/tap "${GITHUB_WORKSPACE}"
+          brew bottle --merge --write --no-commit bottle-artifacts/merged.json
+
+      - name: Publish bottle archives to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mapfile -t assets < <(find bottle-artifacts -maxdepth 1 -type f -name '*.tar.gz' | sort)
+          if [[ "${#assets[@]}" -eq 0 ]]; then
+            echo "::error::No bottle assets to upload."
+            exit 1
+          fi
+
+          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            gh release upload "${RELEASE_TAG}" "${assets[@]}" --clobber
+          else
+            gh release create "${RELEASE_TAG}" "${assets[@]}" \
+              --title "dotfiles-manager ${VERSION} bottles" \
+              --notes "Automated bottle release for dotfiles-manager ${VERSION}."
+          fi
+
+      - name: Validate formula
+        run: |
+          set -euo pipefail
+          brew audit --strict shpoont/tap/dotfiles-manager
+
+      - name: Commit and push formula update
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- Formula/dotfiles-manager.rb; then
+            echo "No formula changes to commit."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/dotfiles-manager.rb
+          git commit -m "dotfiles-manager ${VERSION}"
+          git push origin HEAD:master
