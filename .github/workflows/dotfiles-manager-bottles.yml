@@ -136,7 +136,9 @@ jobs:
           set -euo pipefail
           brew tap shpoont/tap "https://github.com/shpoont/homebrew-tap"
           tap_repo="$(brew --repo shpoont/tap)"
-          cp Formula/dotfiles-manager.rb "${tap_repo}/Formula/dotfiles-manager.rb"
+          if ! cmp -s Formula/dotfiles-manager.rb "${tap_repo}/Formula/dotfiles-manager.rb"; then
+            cp Formula/dotfiles-manager.rb "${tap_repo}/Formula/dotfiles-manager.rb"
+          fi
 
       - name: Build bottle
         run: |
@@ -315,7 +317,9 @@ jobs:
           set -euo pipefail
           brew tap shpoont/tap "https://github.com/shpoont/homebrew-tap"
           tap_repo="$(brew --repo shpoont/tap)"
-          cp Formula/dotfiles-manager.rb "${tap_repo}/Formula/dotfiles-manager.rb"
+          if ! cmp -s Formula/dotfiles-manager.rb "${tap_repo}/Formula/dotfiles-manager.rb"; then
+            cp Formula/dotfiles-manager.rb "${tap_repo}/Formula/dotfiles-manager.rb"
+          fi
 
       - name: Publish bottle archives to GitHub Release
         env:
