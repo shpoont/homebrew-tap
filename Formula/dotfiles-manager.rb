@@ -12,7 +12,6 @@ class DotfilesManager < Formula
     sha256 cellar: :any_skip_relocation, x86_64_linux: "12083d3a3f5e18165fcc0bf0811121488c10c2eca0a8bd316ce4596344ae2e12"
   end
 
-
   depends_on "go" => :build
 
   def install

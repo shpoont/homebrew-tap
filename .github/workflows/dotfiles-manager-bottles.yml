@@ -126,6 +126,7 @@ jobs:
               text,
           )
           text = re.sub(r'assert_match .*?, output', 'assert_match "\\"ok\\":true", output', text, count=1)
+          text = text.replace("\n\n\n  depends_on", "\n\n  depends_on")
 
           path.write_text(text)
           PY
@@ -249,6 +250,7 @@ jobs:
               text,
           )
           text = re.sub(r'assert_match .*?, output', 'assert_match "\\"ok\\":true", output', text, count=1)
+          text = text.replace("\n\n\n  depends_on", "\n\n  depends_on")
 
           path.write_text(text)
           PY
@@ -291,6 +293,15 @@ jobs:
           PY
 
           brew bottle --merge --write --no-commit bottle-artifacts/merged.json
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("Formula/dotfiles-manager.rb")
+          text = path.read_text()
+          text = text.replace("\n\n\n  depends_on", "\n\n  depends_on")
+          path.write_text(text)
+          PY
 
       - name: Publish bottle archives to GitHub Release
         env:
