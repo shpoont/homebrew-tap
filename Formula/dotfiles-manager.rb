@@ -14,7 +14,8 @@ class DotfilesManager < Formula
   depends_on "go" => :build
 
   def install
-    system "go", "build", *std_go_args(ldflags: "-s -w"), "./cmd/dotfiles-manager"
+    ldflags = "-s -w -X github.com/shpoont/dotfiles-manager/internal/app.buildVersion=#{version}"
+    system "go", "build", *std_go_args(ldflags: ldflags), "./cmd/dotfiles-manager"
   end
 
   test do
@@ -26,5 +27,6 @@ class DotfilesManager < Formula
 
     output = shell_output("#{bin}/dotfiles-manager --config #{testpath}/.dotfiles-manager.yaml status --json")
     assert_match "\"ok\":true", output
+    assert_equal "dotfiles-manager version #{version}", shell_output("#{bin}/dotfiles-manager --version").strip
   end
 end
