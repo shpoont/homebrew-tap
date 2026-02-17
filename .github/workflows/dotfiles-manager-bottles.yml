@@ -72,20 +72,32 @@ jobs:
           echo "source_sha256=${source_sha256}" >> "$GITHUB_OUTPUT"
           echo "release_tag=dotfiles-manager-${version}" >> "$GITHUB_OUTPUT"
 
-  commit-source-update:
-    name: commit source update
+  build-bottles:
+    name: build ${{ matrix.os }}
     needs:
       - prepare
-    runs-on: ubuntu-22.04
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-22.04
+          - macos-15-intel
+          - macos-26
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
       SOURCE_SHA256: ${{ needs.prepare.outputs.source_sha256 }}
+      RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
     steps:
       - name: Checkout tap
         uses: actions/checkout@v4
         with:
           ref: master
-          fetch-depth: 0
+
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@main
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Update formula source fields
         run: |
@@ -117,46 +129,6 @@ jobs:
 
           path.write_text(text)
           PY
-
-      - name: Commit source update
-        run: |
-          set -euo pipefail
-          if git diff --quiet -- Formula/dotfiles-manager.rb; then
-            echo "No source update changes."
-            exit 0
-          fi
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Formula/dotfiles-manager.rb
-          git commit -m "dotfiles-manager ${VERSION} source update"
-          git push origin HEAD:master
-
-  build-bottles:
-    name: build ${{ matrix.os }}
-    needs:
-      - prepare
-      - commit-source-update
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os:
-          - ubuntu-22.04
-          - macos-15-intel
-          - macos-26
-    env:
-      RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
-    steps:
-      - name: Checkout tap
-        uses: actions/checkout@v4
-        with:
-          ref: master
-
-      - name: Set up Homebrew
-        uses: Homebrew/actions/setup-homebrew@main
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build bottle
         run: |
@@ -216,6 +188,7 @@ jobs:
     runs-on: ubuntu-22.04
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
+      SOURCE_SHA256: ${{ needs.prepare.outputs.source_sha256 }}
       RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
     steps:
       - name: Checkout tap
@@ -246,6 +219,37 @@ jobs:
             echo "::error::Expected JSON and bottle archives in bottle-artifacts."
             exit 1
           fi
+
+      - name: Update formula source fields
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          path = Path("Formula/dotfiles-manager.rb")
+          text = path.read_text()
+
+          version = os.environ["VERSION"]
+          source_sha = os.environ["SOURCE_SHA256"]
+
+          text = re.sub(
+              r'url "https://github\\.com/shpoont/dotfiles-manager/archive/refs/tags/v[^"]+\\.tar\\.gz"',
+              f'url "https://github.com/shpoont/dotfiles-manager/archive/refs/tags/v{version}.tar.gz"',
+              text,
+          )
+          text = re.sub(r'sha256 "[0-9a-f]{64}"', f'sha256 "{source_sha}"', text, count=1)
+          text = re.sub(r'\n  bottle do\n.*?\n  end\n', '\n', text, count=1, flags=re.S)
+          text = re.sub(
+              r'output = shell_output\("#\{bin\}/dotfiles-manager --config #\{testpath\}/\\.dotfiles-manager\\.yaml status(?: --json)?"\)',
+              'output = shell_output("#{bin}/dotfiles-manager --config #{testpath}/.dotfiles-manager.yaml status --json")',
+              text,
+          )
+          text = re.sub(r'assert_match .*?, output', 'assert_match "\\"ok\\":true", output', text, count=1)
+
+          path.write_text(text)
+          PY
 
       - name: Merge bottle metadata into formula
         run: |
@@ -286,9 +290,6 @@ jobs:
 
           brew bottle --merge --write --no-commit bottle-artifacts/merged.json
 
-          tap_formula="$(brew --repository)/Library/Taps/shpoont/homebrew-tap/Formula/dotfiles-manager.rb"
-          cp "${tap_formula}" Formula/dotfiles-manager.rb
-
       - name: Publish bottle archives to GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -312,6 +313,7 @@ jobs:
         run: |
           set -euo pipefail
           brew audit --strict shpoont/tap/dotfiles-manager
+          brew test shpoont/tap/dotfiles-manager
 
       - name: Commit and push formula update
         run: |
