@@ -1,13 +1,12 @@
 class DotfilesManager < Formula
   desc "Config-driven dotfiles synchronization tool"
   homepage "https://github.com/shpoont/dotfiles-manager"
-  url "https://github.com/shpoont/dotfiles-manager/archive/refs/tags/v0.1.1.tar.gz"
-  sha256 "0fe09950f2a6c498ece53374b8b09561ea2d4e93e72c524c7e2aa65e5863f79a"
+  url "https://github.com/shpoont/dotfiles-manager/archive/refs/tags/v0.1.2.tar.gz"
+  sha256 "4f4577bf25897b18bdd31b33d0c0272d7d1d41e56665007e08df9db1a3f23a41"
 
   bottle do
-    root_url "https://github.com/shpoont/homebrew-tap/releases/download/dotfiles-manager-0.1.1"
-    rebuild 1
-    sha256 cellar: :any_skip_relocation, arm64_tahoe: "fb7c02ec63af549324a81048de64e7bcc92f0ed400e0634f74dd3ae59d2b3d89"
+    root_url "https://github.com/shpoont/homebrew-tap/releases/download/dotfiles-manager-0.1.2"
+    sha256 cellar: :any_skip_relocation, arm64_tahoe: "db497ab17daa6fb15286b326b448de19440a54498f784314dd9b5aa5fb6b9e6c"
   end
 
   depends_on "go" => :build
@@ -24,6 +23,6 @@ class DotfilesManager < Formula
     YAML
 
     output = shell_output("#{bin}/dotfiles-manager --config #{testpath}/.dotfiles-manager.yaml status")
-    assert_match "status: syncs=1", output
+    assert_match "summary deploy=0 import=0", output
   end
 end
