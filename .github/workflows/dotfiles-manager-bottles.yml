@@ -99,14 +99,6 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Tap local checkout
-        run: |
-          set -euo pipefail
-          if brew tap | grep -qx "shpoont/tap"; then
-            brew untap shpoont/tap
-          fi
-          brew tap shpoont/tap "$(pwd)"
-
       - name: Update formula source fields
         run: |
           set -euo pipefail
@@ -145,12 +137,12 @@ jobs:
           if brew list --versions dotfiles-manager >/dev/null 2>&1; then
             brew uninstall --ignore-dependencies dotfiles-manager
           fi
-          brew install --build-bottle shpoont/tap/dotfiles-manager
+          brew install --build-bottle ./Formula/dotfiles-manager.rb
 
       - name: Create bottle archive + json
         run: |
           set -euo pipefail
-          brew bottle --json --root-url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}" shpoont/tap/dotfiles-manager
+          brew bottle --json --root-url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}" dotfiles-manager
 
           python3 - <<'PY'
           import glob
@@ -212,14 +204,6 @@ jobs:
         uses: Homebrew/actions/setup-homebrew@main
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Tap local checkout
-        run: |
-          set -euo pipefail
-          if brew tap | grep -qx "shpoont/tap"; then
-            brew untap shpoont/tap
-          fi
-          brew tap shpoont/tap "$(pwd)"
 
       - name: Download bottle artifacts
         uses: actions/download-artifact@v4
@@ -341,12 +325,12 @@ jobs:
       - name: Validate formula
         run: |
           set -euo pipefail
-          brew audit --strict shpoont/tap/dotfiles-manager
+          brew audit --strict ./Formula/dotfiles-manager.rb
           if brew list --versions dotfiles-manager >/dev/null 2>&1; then
             brew uninstall --ignore-dependencies dotfiles-manager
           fi
-          brew install shpoont/tap/dotfiles-manager
-          brew test shpoont/tap/dotfiles-manager
+          brew install ./Formula/dotfiles-manager.rb
+          brew test dotfiles-manager
 
       - name: Commit and push formula update
         run: |
