@@ -161,7 +161,6 @@ jobs:
       - name: Build bottle
         run: |
           set -euo pipefail
-          brew update-reset shpoont/tap
           brew uninstall --ignore-dependencies dotfiles-manager || true
           brew install --build-bottle shpoont/tap/dotfiles-manager
 
@@ -285,7 +284,6 @@ jobs:
           out.write_text(json.dumps(merged, indent=2) + "\n", encoding="utf-8")
           PY
 
-          brew update-reset shpoont/tap
           brew bottle --merge --write --no-commit bottle-artifacts/merged.json
 
           tap_formula="$(brew --repository)/Library/Taps/shpoont/homebrew-tap/Formula/dotfiles-manager.rb"
@@ -313,8 +311,6 @@ jobs:
       - name: Validate formula
         run: |
           set -euo pipefail
-          brew update-reset shpoont/tap
-          cp Formula/dotfiles-manager.rb "$(brew --repository)/Library/Taps/shpoont/homebrew-tap/Formula/dotfiles-manager.rb"
           brew audit --strict shpoont/tap/dotfiles-manager
 
       - name: Commit and push formula update
