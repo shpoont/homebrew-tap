@@ -89,6 +89,7 @@ jobs:
       SOURCE_SHA256: ${{ needs.prepare.outputs.source_sha256 }}
       RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
       HOMEBREW_NO_INSTALL_FROM_API: "1"
+      HOMEBREW_NO_AUTO_UPDATE: "1"
     steps:
       - name: Checkout tap
         uses: actions/checkout@v4
@@ -204,6 +205,7 @@ jobs:
       SOURCE_SHA256: ${{ needs.prepare.outputs.source_sha256 }}
       RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
       HOMEBREW_NO_INSTALL_FROM_API: "1"
+      HOMEBREW_NO_AUTO_UPDATE: "1"
     steps:
       - name: Checkout tap
         uses: actions/checkout@v4
