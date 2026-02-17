@@ -115,12 +115,25 @@ jobs:
           version = os.environ["VERSION"]
           source_sha = os.environ["SOURCE_SHA256"]
 
-          text = re.sub(
-              r'url "https://github\\.com/shpoont/dotfiles-manager/archive/refs/tags/v[^"]+\\.tar\\.gz"',
-              f'url "https://github.com/shpoont/dotfiles-manager/archive/refs/tags/v{version}.tar.gz"',
+          text, url_replacements = re.subn(
+              r'^\s*url\s+"https://github\.com/shpoont/dotfiles-manager/archive/refs/tags/v[^"]+\.tar\.gz"\s*$',
+              f'  url "https://github.com/shpoont/dotfiles-manager/archive/refs/tags/v{version}.tar.gz"',
               text,
+              count=1,
+              flags=re.M,
           )
-          text = re.sub(r'sha256 "[0-9a-f]{64}"', f'sha256 "{source_sha}"', text, count=1)
+          if url_replacements != 1:
+              raise SystemExit(f"Expected to update exactly one source url line, got {url_replacements}")
+
+          text, sha_replacements = re.subn(
+              r'^\s*sha256\s+"[0-9a-f]{64}"\s*$',
+              f'  sha256 "{source_sha}"',
+              text,
+              count=1,
+              flags=re.M,
+          )
+          if sha_replacements != 1:
+              raise SystemExit(f"Expected to update exactly one source sha line, got {sha_replacements}")
           text = re.sub(r'\n  bottle do\n.*?\n  end\n', '\n', text, count=1, flags=re.S)
           text = re.sub(
               r'output = shell_output\("#\{bin\}/dotfiles-manager --config #\{testpath\}/\\.dotfiles-manager\\.yaml status(?: --json)?"\)',
@@ -250,12 +263,25 @@ jobs:
           version = os.environ["VERSION"]
           source_sha = os.environ["SOURCE_SHA256"]
 
-          text = re.sub(
-              r'url "https://github\\.com/shpoont/dotfiles-manager/archive/refs/tags/v[^"]+\\.tar\\.gz"',
-              f'url "https://github.com/shpoont/dotfiles-manager/archive/refs/tags/v{version}.tar.gz"',
+          text, url_replacements = re.subn(
+              r'^\s*url\s+"https://github\.com/shpoont/dotfiles-manager/archive/refs/tags/v[^"]+\.tar\.gz"\s*$',
+              f'  url "https://github.com/shpoont/dotfiles-manager/archive/refs/tags/v{version}.tar.gz"',
               text,
+              count=1,
+              flags=re.M,
           )
-          text = re.sub(r'sha256 "[0-9a-f]{64}"', f'sha256 "{source_sha}"', text, count=1)
+          if url_replacements != 1:
+              raise SystemExit(f"Expected to update exactly one source url line, got {url_replacements}")
+
+          text, sha_replacements = re.subn(
+              r'^\s*sha256\s+"[0-9a-f]{64}"\s*$',
+              f'  sha256 "{source_sha}"',
+              text,
+              count=1,
+              flags=re.M,
+          )
+          if sha_replacements != 1:
+              raise SystemExit(f"Expected to update exactly one source sha line, got {sha_replacements}")
           text = re.sub(r'\n  bottle do\n.*?\n  end\n', '\n', text, count=1, flags=re.S)
           text = re.sub(
               r'output = shell_output\("#\{bin\}/dotfiles-manager --config #\{testpath\}/\\.dotfiles-manager\\.yaml status(?: --json)?"\)',
