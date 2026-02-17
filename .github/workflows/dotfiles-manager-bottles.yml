@@ -99,6 +99,14 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Tap local checkout
+        run: |
+          set -euo pipefail
+          if brew tap | grep -qx "shpoont/tap"; then
+            brew untap shpoont/tap
+          fi
+          brew tap shpoont/tap "$(pwd)"
+
       - name: Update formula source fields
         run: |
           set -euo pipefail
@@ -204,6 +212,14 @@ jobs:
         uses: Homebrew/actions/setup-homebrew@main
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tap local checkout
+        run: |
+          set -euo pipefail
+          if brew tap | grep -qx "shpoont/tap"; then
+            brew untap shpoont/tap
+          fi
+          brew tap shpoont/tap "$(pwd)"
 
       - name: Download bottle artifacts
         uses: actions/download-artifact@v4
