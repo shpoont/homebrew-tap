@@ -1,14 +1,14 @@
 class DotfilesManager < Formula
   desc "Config-driven dotfiles synchronization tool"
   homepage "https://github.com/shpoont/dotfiles-manager"
-  url "https://github.com/shpoont/dotfiles-manager/archive/refs/tags/v0.1.6.tar.gz"
-  sha256 "70b92922b6d39d54ade74528d61bbef84bfece6cf7cfd560d540bb60707311d8"
+  url "https://github.com/shpoont/dotfiles-manager/archive/refs/tags/v0.1.7.tar.gz"
+  sha256 "44ea4fc013c823223549e635b5b9af0771ff02b2fe42ed1543ada55d5fb6b5e3"
 
   bottle do
-    root_url "https://github.com/shpoont/homebrew-tap/releases/download/dotfiles-manager-0.1.6"
-    sha256 cellar: :any_skip_relocation, arm64_tahoe:  "0fb9799d27b77c37988c7e738417a197bb9a6ee3a94658f8444e9770acc2b5c6"
-    sha256 cellar: :any_skip_relocation, sequoia:      "69d8e3b3c1a442a93be4d263028ee7e8763f7a80739894134ba338c44b21cd5a"
-    sha256 cellar: :any_skip_relocation, x86_64_linux: "e11d9227bade93c8f50d27f59c47a2ba089b3b1ba7bc6263d38e574188523020"
+    root_url "https://github.com/shpoont/homebrew-tap/releases/download/dotfiles-manager-0.1.7"
+    sha256 cellar: :any_skip_relocation, arm64_tahoe:  "2c048b021593e47d13bfdbde3b4545b3775ef3b1e0c66a2266c40fdb4d57c573"
+    sha256 cellar: :any_skip_relocation, sequoia:      "a4caa25a4d402e02bc5b4c1453ec0fe2638d1ff0b00c468c976331e674feaf8b"
+    sha256 cellar: :any_skip_relocation, x86_64_linux: "1d00aaae275db4c55b59f0f8e45e7f392c652c7dd5234eaf2f839b5c4e0d88e0"
   end
 
   depends_on "go" => :build
