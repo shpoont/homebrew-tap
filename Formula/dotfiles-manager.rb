@@ -14,6 +14,9 @@ class DotfilesManager < Formula
   depends_on "go" => :build
 
   def install
+    # Build static Go bottles so the executable does not depend on a
+    # Homebrew-relocated dynamic loader path.
+    ENV["CGO_ENABLED"] = "0"
     ldflags = "-s -w -X github.com/shpoont/dotfiles-manager/internal/app.buildVersion=#{version}"
     system "go", "build", *std_go_args(ldflags: ldflags), "./cmd/dotfiles-manager"
   end
@@ -27,6 +30,7 @@ class DotfilesManager < Formula
 
     output = shell_output("#{bin}/dotfiles-manager --config #{testpath}/.dotfiles-manager.yaml status --json")
     assert_match "\"ok\":true", output
-    assert_equal "dotfiles-manager version #{version}", shell_output("#{bin}/dotfiles-manager --version").strip
+    version_output = shell_output("#{bin}/dotfiles-manager --version").strip
+    assert_match "dotfiles-manager version=#{version}", version_output
   end
 end

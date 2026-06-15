@@ -135,12 +135,44 @@ jobs:
           if sha_replacements != 1:
               raise SystemExit(f"Expected to update exactly one source sha line, got {sha_replacements}")
           text = re.sub(r'\n  bottle do\n.*?\n  end\n', '\n', text, count=1, flags=re.S)
+
+          old_install = (
+              '  def install\n'
+              '    ldflags = "-s -w -X github.com/shpoont/dotfiles-manager/internal/app.buildVersion=#{version}"\n'
+              '    system "go", "build", *std_go_args(ldflags: ldflags), "./cmd/dotfiles-manager"\n'
+              '  end'
+          )
+          new_install = (
+              '  def install\n'
+              '    # Build static Go bottles so the executable does not depend on a\n'
+              '    # Homebrew-relocated dynamic loader path.\n'
+              '    ENV["CGO_ENABLED"] = "0"\n'
+              '    ldflags = "-s -w -X github.com/shpoont/dotfiles-manager/internal/app.buildVersion=#{version}"\n'
+              '    system "go", "build", *std_go_args(ldflags: ldflags), "./cmd/dotfiles-manager"\n'
+              '  end'
+          )
+          if old_install in text:
+              text = text.replace(old_install, new_install, 1)
+          elif new_install not in text:
+              raise SystemExit("Expected dotfiles-manager install block to normalize CGO_ENABLED=0")
+
           text = re.sub(
               r'output = shell_output\("#\{bin\}/dotfiles-manager --config #\{testpath\}/\\.dotfiles-manager\\.yaml status(?: --json)?"\)',
               'output = shell_output("#{bin}/dotfiles-manager --config #{testpath}/.dotfiles-manager.yaml status --json")',
               text,
           )
           text = re.sub(r'assert_match .*?, output', 'assert_match "\\"ok\\":true", output', text, count=1)
+
+          old_version_test = '    assert_equal "dotfiles-manager version #{version}", shell_output("#{bin}/dotfiles-manager --version").strip'
+          new_version_test = (
+              '    version_output = shell_output("#{bin}/dotfiles-manager --version").strip\n'
+              '    assert_match "dotfiles-manager version=#{version}", version_output'
+          )
+          if old_version_test in text:
+              text = text.replace(old_version_test, new_version_test, 1)
+          elif new_version_test not in text:
+              raise SystemExit("Expected dotfiles-manager version test to match enriched v2 output")
+
           text = text.replace("\n\n\n  depends_on", "\n\n  depends_on")
 
           path.write_text(text)
@@ -283,12 +315,44 @@ jobs:
           if sha_replacements != 1:
               raise SystemExit(f"Expected to update exactly one source sha line, got {sha_replacements}")
           text = re.sub(r'\n  bottle do\n.*?\n  end\n', '\n', text, count=1, flags=re.S)
+
+          old_install = (
+              '  def install\n'
+              '    ldflags = "-s -w -X github.com/shpoont/dotfiles-manager/internal/app.buildVersion=#{version}"\n'
+              '    system "go", "build", *std_go_args(ldflags: ldflags), "./cmd/dotfiles-manager"\n'
+              '  end'
+          )
+          new_install = (
+              '  def install\n'
+              '    # Build static Go bottles so the executable does not depend on a\n'
+              '    # Homebrew-relocated dynamic loader path.\n'
+              '    ENV["CGO_ENABLED"] = "0"\n'
+              '    ldflags = "-s -w -X github.com/shpoont/dotfiles-manager/internal/app.buildVersion=#{version}"\n'
+              '    system "go", "build", *std_go_args(ldflags: ldflags), "./cmd/dotfiles-manager"\n'
+              '  end'
+          )
+          if old_install in text:
+              text = text.replace(old_install, new_install, 1)
+          elif new_install not in text:
+              raise SystemExit("Expected dotfiles-manager install block to normalize CGO_ENABLED=0")
+
           text = re.sub(
               r'output = shell_output\("#\{bin\}/dotfiles-manager --config #\{testpath\}/\\.dotfiles-manager\\.yaml status(?: --json)?"\)',
               'output = shell_output("#{bin}/dotfiles-manager --config #{testpath}/.dotfiles-manager.yaml status --json")',
               text,
           )
           text = re.sub(r'assert_match .*?, output', 'assert_match "\\"ok\\":true", output', text, count=1)
+
+          old_version_test = '    assert_equal "dotfiles-manager version #{version}", shell_output("#{bin}/dotfiles-manager --version").strip'
+          new_version_test = (
+              '    version_output = shell_output("#{bin}/dotfiles-manager --version").strip\n'
+              '    assert_match "dotfiles-manager version=#{version}", version_output'
+          )
+          if old_version_test in text:
+              text = text.replace(old_version_test, new_version_test, 1)
+          elif new_version_test not in text:
+              raise SystemExit("Expected dotfiles-manager version test to match enriched v2 output")
+
           text = text.replace("\n\n\n  depends_on", "\n\n  depends_on")
 
           path.write_text(text)
