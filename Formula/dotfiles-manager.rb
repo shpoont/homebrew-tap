@@ -1,19 +1,20 @@
 class DotfilesManager < Formula
   desc "Config-driven dotfiles synchronization tool"
   homepage "https://github.com/shpoont/dotfiles-manager"
-  url "https://github.com/shpoont/dotfiles-manager/archive/refs/tags/v0.2.0-rc.1.tar.gz"
-  sha256 "cb1cf3bf09ad807537c77c5d9582f4845cc9c3b341d5d2f9b7bf7a24ee51a979"
+  url "https://github.com/shpoont/dotfiles-manager/archive/refs/tags/v0.2.0-rc.2.tar.gz"
+  sha256 "3fbb849c3ad4c178c030c8b845ae6856a2ed23a7926d9614b2c126f4539a85d3"
 
-  BUILD_COMMIT = "cd127ba0969c07eba05916004547e0094303f9cb"
-  BUILD_DATE = "2026-06-15T18:06:25Z"
+  bottle do
+    root_url "https://github.com/shpoont/homebrew-tap/releases/download/dotfiles-manager-0.2.0-rc.2"
+    sha256 cellar: :any_skip_relocation, arm64_tahoe:  "a979e1e52ae40a4a9324fe22d8c9f874f204ca7ace2a4fd07b0dd335cbb54c78"
+    sha256 cellar: :any_skip_relocation, sequoia:      "5631320c700fcfee293019e1ff43482f847eae555d79bd6830ad572b90816664"
+    sha256 cellar: :any_skip_relocation, x86_64_linux: "d205057b74ee61c1fdf2d371482bce300e9ed0a964f62ea43c3da164859331fb"
+  end
+
+  BUILD_COMMIT = "cdfba1b7d35384f0c91bd4460bc96cb049e71fcd"
+  BUILD_DATE = "2026-06-16T16:23:58Z"
   BUILD_CHANNEL = "prerelease"
   BUILD_PROVENANCE = "homebrew-source"
-  bottle do
-    root_url "https://github.com/shpoont/homebrew-tap/releases/download/dotfiles-manager-0.2.0-rc.1"
-    sha256 cellar: :any_skip_relocation, arm64_tahoe:  "f0a78666973e2a943b192f1b0910e82cfe51d69ea7fd0c1a1c35ea9f39a730d1"
-    sha256 cellar: :any_skip_relocation, sequoia:      "3c4a365d5c7e7d1dd98065b5bd92b51d804b416780f865a90e2d0b53fa677480"
-    sha256 cellar: :any_skip_relocation, x86_64_linux: "6623294064381363d2b8a0b2c068417fd552c5324fba05e95f44dda52383ef81"
-  end
 
   depends_on "go" => :build
 
