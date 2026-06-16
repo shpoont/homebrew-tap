@@ -12,6 +12,19 @@ on:
       source_sha256:
         description: "Optional SHA256 for upstream source tarball"
         required: false
+      source_commit:
+        description: "Required 40-character upstream commit SHA"
+        required: true
+      source_date:
+        description: "Required upstream commit date as UTC RFC3339 Z"
+        required: true
+      channel:
+        description: "Optional release channel; derived from tag when omitted"
+        required: false
+      provenance:
+        description: "Build metadata provenance"
+        required: false
+        default: "homebrew-source"
 
 permissions:
   contents: write
@@ -28,13 +41,25 @@ jobs:
       tag: ${{ steps.meta.outputs.tag }}
       version: ${{ steps.meta.outputs.version }}
       source_sha256: ${{ steps.meta.outputs.source_sha256 }}
+      source_commit: ${{ steps.meta.outputs.source_commit }}
+      source_date: ${{ steps.meta.outputs.source_date }}
+      channel: ${{ steps.meta.outputs.channel }}
+      provenance: ${{ steps.meta.outputs.provenance }}
       release_tag: ${{ steps.meta.outputs.release_tag }}
     env:
       EVENT_TAG: ${{ github.event.client_payload.tag }}
       EVENT_VERSION: ${{ github.event.client_payload.version }}
       EVENT_SHA256: ${{ github.event.client_payload.source_sha256 }}
+      EVENT_COMMIT: ${{ github.event.client_payload.source_commit }}
+      EVENT_DATE: ${{ github.event.client_payload.source_date }}
+      EVENT_CHANNEL: ${{ github.event.client_payload.channel }}
+      EVENT_PROVENANCE: ${{ github.event.client_payload.provenance }}
       INPUT_TAG: ${{ inputs.tag }}
       INPUT_SHA256: ${{ inputs.source_sha256 }}
+      INPUT_COMMIT: ${{ inputs.source_commit }}
+      INPUT_DATE: ${{ inputs.source_date }}
+      INPUT_CHANNEL: ${{ inputs.channel }}
+      INPUT_PROVENANCE: ${{ inputs.provenance }}
     steps:
       - name: Resolve inputs
         id: meta
@@ -67,9 +92,65 @@ jobs:
             exit 1
           fi
 
+          source_commit="${EVENT_COMMIT:-${INPUT_COMMIT:-}}"
+          source_date="${EVENT_DATE:-${INPUT_DATE:-}}"
+          channel="${EVENT_CHANNEL:-${INPUT_CHANNEL:-}}"
+          provenance="${EVENT_PROVENANCE:-${INPUT_PROVENANCE:-homebrew-source}}"
+
+          expected_channel="stable"
+          if [[ "${version}" == *-* ]]; then
+            expected_channel="prerelease"
+          fi
+          if [[ -z "${channel}" ]]; then
+            channel="${expected_channel}"
+          fi
+
+          if [[ ! "${source_commit}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Missing or invalid source commit SHA. Refusing to publish unknown Homebrew metadata."
+            exit 1
+          fi
+          if [[ ! "${source_date}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]; then
+            echo "::error::Missing or invalid source date. Refusing to publish unknown Homebrew metadata."
+            exit 1
+          fi
+          case "${channel}" in
+            stable|prerelease) ;;
+            *)
+              echo "::error::Invalid channel: ${channel}"
+              exit 1
+              ;;
+          esac
+          if [[ "${channel}" != "${expected_channel}" ]]; then
+            echo "::error::Channel '${channel}' does not match tag-derived channel '${expected_channel}'."
+            exit 1
+          fi
+          if [[ "${provenance}" != "homebrew-source" ]]; then
+            echo "::error::Invalid provenance '${provenance}'. dotfiles-manager tap builds must use homebrew-source."
+            exit 1
+          fi
+
+          rm -rf upstream-check
+          git init -q upstream-check
+          git -C upstream-check fetch -q --depth=1 https://github.com/shpoont/dotfiles-manager.git "refs/tags/${tag}:refs/tags/${tag}"
+          resolved_commit="$(git -C upstream-check rev-list -n 1 "refs/tags/${tag}")"
+          resolved_commit_date="$(git -C upstream-check show -s --format=%cI "${resolved_commit}")"
+          resolved_date="$(date -u -d "${resolved_commit_date}" '+%Y-%m-%dT%H:%M:%SZ')"
+          if [[ "${source_commit}" != "${resolved_commit}" ]]; then
+            echo "::error::Source commit '${source_commit}' does not match upstream tag commit '${resolved_commit}'."
+            exit 1
+          fi
+          if [[ "${source_date}" != "${resolved_date}" ]]; then
+            echo "::error::Source date '${source_date}' does not match upstream tag commit date '${resolved_date}'."
+            exit 1
+          fi
+
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "source_sha256=${source_sha256}" >> "$GITHUB_OUTPUT"
+          echo "source_commit=${source_commit}" >> "$GITHUB_OUTPUT"
+          echo "source_date=${source_date}" >> "$GITHUB_OUTPUT"
+          echo "channel=${channel}" >> "$GITHUB_OUTPUT"
+          echo "provenance=${provenance}" >> "$GITHUB_OUTPUT"
           echo "release_tag=dotfiles-manager-${version}" >> "$GITHUB_OUTPUT"
 
   build-bottles:
@@ -87,6 +168,10 @@ jobs:
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
       SOURCE_SHA256: ${{ needs.prepare.outputs.source_sha256 }}
+      SOURCE_COMMIT: ${{ needs.prepare.outputs.source_commit }}
+      SOURCE_DATE: ${{ needs.prepare.outputs.source_date }}
+      CHANNEL: ${{ needs.prepare.outputs.channel }}
+      PROVENANCE: ${{ needs.prepare.outputs.provenance }}
       RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
       HOMEBREW_NO_INSTALL_FROM_API: "1"
       HOMEBREW_NO_AUTO_UPDATE: "1"
@@ -104,79 +189,15 @@ jobs:
       - name: Update formula source fields
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          import os
-          import re
-          from pathlib import Path
-
-          path = Path("Formula/dotfiles-manager.rb")
-          text = path.read_text()
-
-          version = os.environ["VERSION"]
-          source_sha = os.environ["SOURCE_SHA256"]
-
-          text, url_replacements = re.subn(
-              r'^\s*url\s+"https://github\.com/shpoont/dotfiles-manager/archive/refs/tags/v[^"]+\.tar\.gz"\s*$',
-              f'  url "https://github.com/shpoont/dotfiles-manager/archive/refs/tags/v{version}.tar.gz"',
-              text,
-              count=1,
-              flags=re.M,
-          )
-          if url_replacements != 1:
-              raise SystemExit(f"Expected to update exactly one source url line, got {url_replacements}")
-
-          text, sha_replacements = re.subn(
-              r'^\s*sha256\s+"[0-9a-f]{64}"\s*$',
-              f'  sha256 "{source_sha}"',
-              text,
-              count=1,
-              flags=re.M,
-          )
-          if sha_replacements != 1:
-              raise SystemExit(f"Expected to update exactly one source sha line, got {sha_replacements}")
-          text = re.sub(r'\n  bottle do\n.*?\n  end\n', '\n', text, count=1, flags=re.S)
-
-          old_install = (
-              '  def install\n'
-              '    ldflags = "-s -w -X github.com/shpoont/dotfiles-manager/internal/app.buildVersion=#{version}"\n'
-              '    system "go", "build", *std_go_args(ldflags: ldflags), "./cmd/dotfiles-manager"\n'
-              '  end'
-          )
-          new_install = (
-              '  def install\n'
-              '    # Build static Go bottles so the executable does not depend on a\n'
-              '    # Homebrew-relocated dynamic loader path.\n'
-              '    ENV["CGO_ENABLED"] = "0"\n'
-              '    ldflags = "-s -w -X github.com/shpoont/dotfiles-manager/internal/app.buildVersion=#{version}"\n'
-              '    system "go", "build", *std_go_args(ldflags: ldflags), "./cmd/dotfiles-manager"\n'
-              '  end'
-          )
-          if old_install in text:
-              text = text.replace(old_install, new_install, 1)
-          elif new_install not in text:
-              raise SystemExit("Expected dotfiles-manager install block to normalize CGO_ENABLED=0")
-
-          text = re.sub(
-              r'output = shell_output\("#\{bin\}/dotfiles-manager --config #\{testpath\}/\\.dotfiles-manager\\.yaml status(?: --json)?"\)',
-              'output = shell_output("#{bin}/dotfiles-manager --config #{testpath}/.dotfiles-manager.yaml status --json")',
-              text,
-          )
-          text = re.sub(r'assert_match .*?, output', 'assert_match "\\"ok\\":true", output', text, count=1)
-
-          old_version_test = '    assert_equal "dotfiles-manager version #{version}", shell_output("#{bin}/dotfiles-manager --version").strip'
-          new_version_test = (
-              '    version_output = shell_output("#{bin}/dotfiles-manager --version").strip\n'
-              '    assert_match "dotfiles-manager version=#{version}", version_output'
-          )
-          if old_version_test in text:
-              text = text.replace(old_version_test, new_version_test, 1)
-          elif new_version_test not in text:
-              raise SystemExit("Expected dotfiles-manager version test to match enriched v2 output")
-
-          text = text.replace("\n\n\n  depends_on", "\n\n  depends_on")
-
-          path.write_text(text)
-          PY
+          python3 scripts/update_dotfiles_manager_formula.py \
+            --formula Formula/dotfiles-manager.rb \
+            --version "${VERSION}" \
+            --source-sha256 "${SOURCE_SHA256}" \
+            --source-commit "${SOURCE_COMMIT}" \
+            --source-date "${SOURCE_DATE}" \
+            --channel "${CHANNEL}" \
+            --provenance "${PROVENANCE}" \
+            --drop-bottle
 
       - name: Sync formula into active Homebrew tap
         run: |
@@ -194,6 +215,11 @@ jobs:
             brew uninstall --ignore-dependencies dotfiles-manager
           fi
           brew install --build-bottle shpoont/tap/dotfiles-manager
+
+      - name: Validate built formula metadata
+        run: |
+          set -euo pipefail
+          brew test shpoont/tap/dotfiles-manager
 
       - name: Create bottle archive + json
         run: |
@@ -248,6 +274,10 @@ jobs:
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
       SOURCE_SHA256: ${{ needs.prepare.outputs.source_sha256 }}
+      SOURCE_COMMIT: ${{ needs.prepare.outputs.source_commit }}
+      SOURCE_DATE: ${{ needs.prepare.outputs.source_date }}
+      CHANNEL: ${{ needs.prepare.outputs.channel }}
+      PROVENANCE: ${{ needs.prepare.outputs.provenance }}
       RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
       HOMEBREW_NO_INSTALL_FROM_API: "1"
       HOMEBREW_NO_AUTO_UPDATE: "1"
@@ -284,79 +314,15 @@ jobs:
       - name: Update formula source fields
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          import os
-          import re
-          from pathlib import Path
-
-          path = Path("Formula/dotfiles-manager.rb")
-          text = path.read_text()
-
-          version = os.environ["VERSION"]
-          source_sha = os.environ["SOURCE_SHA256"]
-
-          text, url_replacements = re.subn(
-              r'^\s*url\s+"https://github\.com/shpoont/dotfiles-manager/archive/refs/tags/v[^"]+\.tar\.gz"\s*$',
-              f'  url "https://github.com/shpoont/dotfiles-manager/archive/refs/tags/v{version}.tar.gz"',
-              text,
-              count=1,
-              flags=re.M,
-          )
-          if url_replacements != 1:
-              raise SystemExit(f"Expected to update exactly one source url line, got {url_replacements}")
-
-          text, sha_replacements = re.subn(
-              r'^\s*sha256\s+"[0-9a-f]{64}"\s*$',
-              f'  sha256 "{source_sha}"',
-              text,
-              count=1,
-              flags=re.M,
-          )
-          if sha_replacements != 1:
-              raise SystemExit(f"Expected to update exactly one source sha line, got {sha_replacements}")
-          text = re.sub(r'\n  bottle do\n.*?\n  end\n', '\n', text, count=1, flags=re.S)
-
-          old_install = (
-              '  def install\n'
-              '    ldflags = "-s -w -X github.com/shpoont/dotfiles-manager/internal/app.buildVersion=#{version}"\n'
-              '    system "go", "build", *std_go_args(ldflags: ldflags), "./cmd/dotfiles-manager"\n'
-              '  end'
-          )
-          new_install = (
-              '  def install\n'
-              '    # Build static Go bottles so the executable does not depend on a\n'
-              '    # Homebrew-relocated dynamic loader path.\n'
-              '    ENV["CGO_ENABLED"] = "0"\n'
-              '    ldflags = "-s -w -X github.com/shpoont/dotfiles-manager/internal/app.buildVersion=#{version}"\n'
-              '    system "go", "build", *std_go_args(ldflags: ldflags), "./cmd/dotfiles-manager"\n'
-              '  end'
-          )
-          if old_install in text:
-              text = text.replace(old_install, new_install, 1)
-          elif new_install not in text:
-              raise SystemExit("Expected dotfiles-manager install block to normalize CGO_ENABLED=0")
-
-          text = re.sub(
-              r'output = shell_output\("#\{bin\}/dotfiles-manager --config #\{testpath\}/\\.dotfiles-manager\\.yaml status(?: --json)?"\)',
-              'output = shell_output("#{bin}/dotfiles-manager --config #{testpath}/.dotfiles-manager.yaml status --json")',
-              text,
-          )
-          text = re.sub(r'assert_match .*?, output', 'assert_match "\\"ok\\":true", output', text, count=1)
-
-          old_version_test = '    assert_equal "dotfiles-manager version #{version}", shell_output("#{bin}/dotfiles-manager --version").strip'
-          new_version_test = (
-              '    version_output = shell_output("#{bin}/dotfiles-manager --version").strip\n'
-              '    assert_match "dotfiles-manager version=#{version}", version_output'
-          )
-          if old_version_test in text:
-              text = text.replace(old_version_test, new_version_test, 1)
-          elif new_version_test not in text:
-              raise SystemExit("Expected dotfiles-manager version test to match enriched v2 output")
-
-          text = text.replace("\n\n\n  depends_on", "\n\n  depends_on")
-
-          path.write_text(text)
-          PY
+          python3 scripts/update_dotfiles_manager_formula.py \
+            --formula Formula/dotfiles-manager.rb \
+            --version "${VERSION}" \
+            --source-sha256 "${SOURCE_SHA256}" \
+            --source-commit "${SOURCE_COMMIT}" \
+            --source-date "${SOURCE_DATE}" \
+            --channel "${CHANNEL}" \
+            --provenance "${PROVENANCE}" \
+            --drop-bottle
 
       - name: Merge bottle metadata into formula
         run: |
@@ -406,6 +372,35 @@ jobs:
           path.write_text(text)
           PY
 
+      - name: Assert final formula metadata contract
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          text = Path("Formula/dotfiles-manager.rb").read_text()
+          expected = [
+              f'BUILD_COMMIT = "{os.environ["SOURCE_COMMIT"]}"',
+              f'BUILD_DATE = "{os.environ["SOURCE_DATE"]}"',
+              f'BUILD_CHANNEL = "{os.environ["CHANNEL"]}"',
+              'BUILD_PROVENANCE = "homebrew-source"',
+              'buildVersion=#{version}',
+              'buildCommit=#{BUILD_COMMIT}',
+              'buildDate=#{BUILD_DATE}',
+              'buildChannel=#{BUILD_CHANNEL}',
+              'buildProvenance=#{BUILD_PROVENANCE}',
+              'refute_match "version=dev"',
+              'refute_match "commit=unknown"',
+              'refute_match "date=unknown"',
+              'refute_match "channel=dev"',
+              'refute_match "provenance=unspecified"',
+          ]
+          missing = [needle for needle in expected if needle not in text]
+          if missing:
+              raise SystemExit("Formula is missing metadata contract entries: " + ", ".join(missing))
+          PY
+
       - name: Sync formula into active Homebrew tap
         run: |
           set -euo pipefail
@@ -414,6 +409,16 @@ jobs:
           if ! cmp -s Formula/dotfiles-manager.rb "${tap_repo}/Formula/dotfiles-manager.rb"; then
             cp Formula/dotfiles-manager.rb "${tap_repo}/Formula/dotfiles-manager.rb"
           fi
+
+      - name: Validate formula
+        run: |
+          set -euo pipefail
+          brew audit --strict shpoont/tap/dotfiles-manager
+          if brew list --versions dotfiles-manager >/dev/null 2>&1; then
+            brew uninstall --ignore-dependencies dotfiles-manager
+          fi
+          brew install --build-from-source shpoont/tap/dotfiles-manager
+          brew test shpoont/tap/dotfiles-manager
 
       - name: Publish bottle archives to GitHub Release
         env:
@@ -433,16 +438,6 @@ jobs:
               --title "dotfiles-manager ${VERSION} bottles" \
               --notes "Automated bottle release for dotfiles-manager ${VERSION}."
           fi
-
-      - name: Validate formula
-        run: |
-          set -euo pipefail
-          brew audit --strict shpoont/tap/dotfiles-manager
-          if brew list --versions dotfiles-manager >/dev/null 2>&1; then
-            brew uninstall --ignore-dependencies dotfiles-manager
-          fi
-          brew install shpoont/tap/dotfiles-manager
-          brew test shpoont/tap/dotfiles-manager
 
       - name: Commit and push formula update
         run: |
