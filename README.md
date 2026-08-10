@@ -21,6 +21,7 @@ brew install shpoont/tap/dotfiles-manager
 | --- | --- | --- |
 | `dotfiles-manager` | [shpoont/dotfiles-manager](https://github.com/shpoont/dotfiles-manager) | Config-driven dotfiles synchronization tool. |
 | `ism` | [shpoont/ism](https://github.com/shpoont/ism) | Interactive Shell Monitor for shell session insights. |
+| `kraken-cli` | [krakenfx/kraken-cli](https://github.com/krakenfx/kraken-cli) | Official Kraken exchange CLI packaged from pinned upstream release artifacts. |
 
 ## Casks
 
