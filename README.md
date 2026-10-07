@@ -1,7 +1,7 @@
 # shpoont/homebrew-tap
 
-This is the custom Homebrew tap for tools maintained under the **shpoont** GitHub account.
-It provides installable Homebrew formulas (and optionally casks) that are not in Homebrew/core.
+This is the custom Homebrew tap maintained under the **shpoont** GitHub account.
+It provides installable Homebrew formulas.
 
 ## Usage
 
@@ -12,16 +12,16 @@ brew tap shpoont/tap
 Then install packages from this tap, for example:
 
 ```bash
-brew install shpoont/tap/dotfiles-manager
+brew install shpoont/tap/kraken-cli
 ```
 
 ## Formulas
 
 | Name | Upstream repo | Description |
 | --- | --- | --- |
-| `dotfiles-manager` | [shpoont/dotfiles-manager](https://github.com/shpoont/dotfiles-manager) | Config-driven dotfiles synchronization tool. |
-| `ism` | [shpoont/ism](https://github.com/shpoont/ism) | Interactive Shell Monitor for shell session insights. |
+| `alloy-analyzer-nojava` | [alloytools/org.alloytools.alloy](https://github.com/alloytools/org.alloytools.alloy) | Alloy Analyzer using an existing Java installation. |
 | `kraken-cli` | [krakenfx/kraken-cli](https://github.com/krakenfx/kraken-cli) | Official Kraken exchange CLI packaged from pinned upstream release artifacts. |
+| `tla2tools-nojava` | [tlaplus/tlaplus](https://github.com/tlaplus/tlaplus) | TLA+ command-line tools using an existing Java installation. |
 
 ## Casks
 
