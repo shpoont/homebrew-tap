@@ -2,6 +2,7 @@ class KrakenCli < Formula
   desc "AI-native CLI for the Kraken exchange"
   homepage "https://github.com/krakenfx/kraken-cli"
   license "MIT"
+  revision 1
 
   if OS.mac? && Hardware::CPU.arm?
     url "https://github.com/krakenfx/kraken-cli/releases/download/v0.5.1/kraken-cli-aarch64-apple-darwin.tar.gz"
@@ -24,10 +25,12 @@ class KrakenCli < Formula
   end
 
   def install
-    bin.install "kraken"
+    bin.install "kraken", "kraken-mcp", "kraken-shell"
   end
 
   test do
     assert_match version.to_s, shell_output("#{bin}/kraken --version")
+    assert_match version.to_s, shell_output("#{bin}/kraken-mcp --version")
+    assert_match version.to_s, shell_output("#{bin}/kraken-shell --version")
   end
 end
